@@ -1,0 +1,41 @@
+﻿@using System.Text.RegularExpressions
+@using Application_lib.Gitlab
+@using Domain_lib.Entities
+
+@inject ITextFormatterService _textFormatter
+
+<div class="kanban-card @(IsMinimal ? "kanban-card-min" : "") @(IsDragging ? "dragging" : "")"
+     draggable="true"
+     @key="CardKanban.Keyid"
+     @onclick="OnClick"
+     @ondragstart="OnDragStart">
+
+    <div class="card-header @(IsMinimal ? "card-header-min" : "")">
+        <div class="card-title @(IsMinimal ? "card-title-min" : "")">@CardKanban.CardName</div>
+        @if (!IsMinimal)
+        {
+            <span class="due-date">Создано: @CardKanban.CreatedAt</span>
+        }
+    </div>
+
+    @if (!IsMinimal)
+    {
+        <span class="card-description">@((MarkupString)_textFormatter.FormatTextToHtml(CardKanban.Description))</span>
+    }
+
+    <div class="card-footer @(IsMinimal ? "card-footer-min" : "")">
+        <span class="assignee">Назначено: @CardKanban.Assigned?.UserName</span>
+        @if (!IsMinimal)
+        {
+            <span class="due-date">Срок @(CardKanban.Duedate?.ToString("dd.MM.yyyy") ?? "-")</span>
+        }        
+    </div>
+</div>
+
+@code {
+    [Parameter] public TdCard CardKanban { get; set; } = default!;
+    [Parameter] public bool IsDragging { get; set; }
+    [Parameter] public bool IsMinimal { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+    [Parameter] public EventCallback OnDragStart { get; set; }
+}

@@ -1,0 +1,33 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <link rel="stylesheet" href="bootstrap/bootstrap.min.css" />
+    <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="webfont.css" />
+    <link rel="stylesheet" href="Intranet_webapp.styles.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <HeadOutlet />
+</head>
+<body class="@(IsDark ? "dark-mode" : "")">
+    <Routes @rendermode="new InteractiveServerRenderMode(false)" />
+    <script src="_framework/blazor.web.js"></script>
+    <script>
+        window.themeService = {
+            setBodyClass: function (className) {
+                document.body.className = className;
+                sessionStorage.setItem('theme', className);
+            },
+            getSavedTheme: function () {
+                return sessionStorage.getItem('theme');
+            }
+        };
+    </script>
+</body>
+</html>
+
+@code {
+    private bool IsDark = false;
+}

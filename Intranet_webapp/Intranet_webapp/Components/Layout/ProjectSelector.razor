@@ -1,0 +1,50 @@
+@using System.Text.Json
+@using Application_lib
+@using Domain_lib.Entities
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using Microsoft.EntityFrameworkCore
+@using System.Net
+
+@inject ProtectedSessionStorage _sessionStorage
+
+<select @onchange="OnProjectChanged" class="form-select">
+    <option value="">-- Выберите проект --</option>
+    @foreach (var project in Projects)
+    {
+        <option value="@project.Keyid" selected="@(project.Keyid == SelectedProjectId)">
+            @project?.ProjectName
+        </option>
+    }
+</select>
+
+@code {
+    [Parameter] public long? SelectedProjectId { get; set; }
+    [Parameter] public EventCallback<long?> SelectedProjectIdChanged { get; set; }
+    [Parameter] public List<TdProject> Projects { get; set; } = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCurrentProjectId();
+    }
+
+    private async Task LoadCurrentProjectId()
+    {
+        SelectedProjectId = (await _sessionStorage.GetAsync<long?>("ProjectId")).Value;
+        await SelectedProjectIdChanged.InvokeAsync(SelectedProjectId);
+    }
+    private async Task OnProjectChanged(ChangeEventArgs e)
+    {
+        if (long.TryParse(e.Value?.ToString(), out var newId))
+        {
+            SelectedProjectId = newId;
+            await _sessionStorage.SetAsync("ProjectId", newId);
+            await SelectedProjectIdChanged.InvokeAsync(newId);
+        }
+        else
+        {
+            SelectedProjectId = null;
+            await _sessionStorage.DeleteAsync("ProjectId");
+            await SelectedProjectIdChanged.InvokeAsync(null);
+        }
+    }
+}

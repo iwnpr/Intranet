@@ -1,0 +1,81 @@
+﻿@page "/"
+@using Application_lib.Gitlab
+@using Infrastructure_lib
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using Intranet_webapp.Components.Layout
+@using Microsoft.EntityFrameworkCore
+
+@inject AppDBContext _context
+@inject IGitService _gitService
+@inject ProtectedSessionStorage _sessionStorage
+@inject IGitApiService _gitApiService
+@rendermode InteractiveServer
+
+<div class="content-container">
+    <div class="content-header">
+        <div class="header-part">
+            <div class="project-selector">
+                <label>Проект:</label>
+                <ProjectSelector Projects="Projects" @bind-SelectedProjectId="SelectedProjectId" />
+            </div>
+        </div>
+    </div>
+</div>
+
+@code{
+    [CascadingParameter] public Guid refreshKey { get; set; }
+    protected override async Task OnParametersSetAsync()
+    {
+        // Обновление данных каждый раз, когда refreshKey меняется
+        await LoadAllData();
+    }
+
+    private long? SelectedProjectId;
+    private TdProject? SelectedProject => Projects.FirstOrDefault(p => p.Keyid == SelectedProjectId);
+    private List<TdProject> Projects = [];
+    private List<TrPriority> Priorities = [];
+    private List<TdCard> Cards = [];
+    private List<TdUser> Users = [];
+    private TdUser? CurrentUser;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCurrentUser();
+        await LoadAllData();
+    }
+    private async Task LoadCurrentUser()
+    {
+        CurrentUser = (await _sessionStorage.GetAsync<TdUser>("login")).Value;
+    }
+    private async Task LoadAllData()
+    {
+        await LoadProjects();
+        await LoadPriorities();
+        await LoadUsers();
+        await LoadCards();
+    }
+    private async Task LoadProjects()
+    {
+        Projects = await _context.TdProjects
+                                 .Include(p => p.TdColumns)
+                                 .ToListAsync();
+
+        SelectedProjectId ??= Projects.FirstOrDefault()?.Keyid;
+    }
+    private async Task LoadPriorities()
+    {
+        Priorities = await _context.TrPriorities.ToListAsync();
+    }
+    private async Task LoadUsers()
+    {
+        Users = await _context.TdUsers.ToListAsync();
+    }
+    private async Task LoadCards()
+    {
+        Cards = await _context.TdCards
+                              .Include(c => c.TdComments).ThenInclude(c => c.User)
+                              .Include(c => c.Author)
+                              .Include(c => c.Assigned)
+                              .ToListAsync();
+    }
+}

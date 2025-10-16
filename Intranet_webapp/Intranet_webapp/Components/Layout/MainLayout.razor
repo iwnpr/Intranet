@@ -1,0 +1,132 @@
+﻿@using Application_lib.Gitlab
+@using Infrastructure_lib
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using Intranet_webapp.Components.Pages
+@using Microsoft.EntityFrameworkCore
+
+@inherits LayoutComponentBase
+@inject NavigationManager _navigationManager
+@inject ThemeService ThemeService
+@inject AppDBContext _context
+@inject IGitService _gitService
+@inject ProtectedSessionStorage _sessionStorage
+@inject IGitApiService _gitApiService
+
+<AuthorizeView>
+    <Authorized>
+        <div class="page">
+            <main>
+                <div class="top-row px-4 justify-content-sm-between">
+                    
+                    <div class="top-row" style="padding-right:unset !important;padding-left:unset !important;">
+                        <img src="favicon.png" style="max-height: 73%;padding: 0 15px 0 0;">
+                        <NavLink class="link-dark" href="" Match="NavLinkMatch.All">
+                            <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Главная
+                        </NavLink>
+                        <NavLink class="link-dark" href="board">
+                            <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Доска
+                        </NavLink>
+                    </div>
+                    <div class="top-row" style="padding-right:unset !important;padding-left:unset !important;">
+                        <button @onclick="SyncWithGitlab" id="@SyncIcon" class="btn btn-sm" style="margin: 0 20px 0 0;">
+                            @(IsSincronizing.GetValueOrDefault(false) ? "Идет синхронизация..." : "Синхронизировать с GitLab")
+                        </button>
+                        <button @onclick="ToggleTheme" class="btn btn-sm" style="margin: 0 20px 0 0;">
+                            ☀ Переключить тему
+                        </button>
+
+                        <div class="btn" id="logout" @onclick=Logout>Выход</div>
+                    </div>
+                </div>
+
+                <article class="content px-4">
+                    <CascadingValue Value="refreshKey">
+                        @Body
+                    </CascadingValue>
+                </article>
+            </main>
+        </div>
+
+        <div id="blazor-error-ui">
+            An unhandled error has occurred.
+            <a href="" class="reload">Reload</a>
+            <a class="dismiss">🗙</a>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <LayoutView Layout="typeof(LoginLayout)">
+            <Login />
+        </LayoutView>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private bool? IsSincronizing = false;
+    private Guid refreshKey = Guid.NewGuid();
+    private bool IsCollapsed;
+    private string SyncIcon = "sync";
+    private string? ErrorMessage = string.Empty;
+    private TdUser? CurrentUser;
+
+    private async Task Logout()
+    {
+        await _sessionStorage.DeleteAsync("login");
+        _navigationManager.NavigateTo("/auth/logout", true);
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ThemeService.LoadSavedThemeAsync();
+            CurrentUser = (await _sessionStorage.GetAsync<TdUser>("login")).Value;
+        }
+    }
+    private async Task ToggleTheme()
+    {
+        await ThemeService.ToggleThemeAsync();
+    }
+    private async Task SyncWithGitlab()
+    {
+        if (IsSincronizing.GetValueOrDefault(false))
+            return;
+
+        IsSincronizing = true;
+
+        SyncIcon = "sync-animated";
+        ErrorMessage = string.Empty;
+
+        if (CurrentUser is not null)
+        {
+            try
+            {
+                if (CurrentUser.Keyid == 0)
+                {
+                    CurrentUser = await _context.TdUsers.FirstAsync(x => x.Login == CurrentUser.Login);
+                    await _sessionStorage.SetAsync("login", CurrentUser);
+                }
+
+                var syncResult = await _gitService.SynchronizeGitlab(CurrentUser.Keyid);
+                if (!syncResult.IsSuccess)
+                {
+                    ErrorMessage = syncResult?.InnerError?.Message;
+                    SyncIcon = "sync-warn";
+                }
+
+                SyncIcon = "sync";
+            }
+            catch (Exception ex)
+            {
+                SyncIcon = "sync-warn";
+                ErrorMessage = ex.Message;
+            }
+        }
+        else
+        {
+            SyncIcon = "sync-warn";
+        }
+        IsSincronizing = false;
+        refreshKey = Guid.NewGuid(); // Обновление дочерних компонентов
+        StateHasChanged();
+    }
+}

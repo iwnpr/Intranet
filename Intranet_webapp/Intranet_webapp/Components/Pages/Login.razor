@@ -1,0 +1,104 @@
+﻿@using System.ComponentModel.DataAnnotations
+@using Application_lib.Authorization
+@using Intranet_webapp.Components.Layout
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using Microsoft.AspNetCore.Authorization
+@using System.DirectoryServices.AccountManagement;
+
+@layout LoginLayout
+@inject ProtectedSessionStorage _sessionStorage
+@inject NavigationManager _navigationManager
+@inject AuthenticationStateProvider AuthProvider
+@inject IAuthorizationService AuthorizationService
+@inject IAuthService _loginService
+
+<div class="login-page-wrapper">
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <h2>Авторизация</h2>
+                <p class="alert-danger" style="text-align:center">@LoginMessage</p>
+
+            </div>
+
+            <EditForm class="form-body" method="post" FormName="LoginUser" Model="@_credential" OnValidSubmit="@Authenticate">
+                <DataAnnotationsValidator />
+                <div class="form-group">
+                    <ValidationMessage For=@(() => _credential.UserName) />
+                    <label for="@_credential.UserName">Логин</label>
+                    <InputText class="form-control" id="username" aria-describedby="emailHelp" placeholder="Введите логин" @bind-Value=@_credential.UserName />
+                </div>
+
+                <div class="form-group">
+                    <ValidationMessage For=@(() => _credential.Password) />
+                    <label for="password">Пароль</label>
+                    <InputText type="password" id="password" class="form-control" placeholder="Введите пароль" @bind-Value=@_credential.Password />
+                </div>
+                <button @(IsSigning ? "disabled" : "" ) type="submit" id="login" class="btn-login">Войти</button>
+                @* <a type="button" id="login" class="btn-login" @onclick="AuthenticateByGit" @(IsSigning ? "disabled" : "" )>Войти</a> *@
+            </EditForm>
+
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Данные авторизации
+    /// </summary>
+    public class UserFrontend
+    {
+        [Required(ErrorMessage = "Поле обязательно к заполнению")]
+        public string UserName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Поле обязательно к заполнению")]
+        public string Password { get; set; } = string.Empty;
+    }
+
+    [SupplyParameterFromForm]
+    private UserFrontend _credential { get; set; } = new UserFrontend();
+
+    private string? LoginMessage;
+
+    private bool IsSigning;
+
+    /// <summary>
+    /// Авторизация
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task Authenticate()
+    {
+        if (IsSigning)
+            return;
+
+        IsSigning = true;
+        try
+        {
+            StateHasChanged();
+            await Task.Delay(1);
+
+            var loginUser = await _loginService.LogIn(_credential.UserName, _credential.Password);
+
+            if (loginUser.IsSuccess)
+            {
+                LoginMessage = string.Empty;
+                await _sessionStorage.SetAsync("login", loginUser.Data);
+                _navigationManager.NavigateTo("/board", true);
+            }
+            else
+            {
+                LoginMessage = loginUser.InnerError.Message;
+            }
+        }
+        finally
+        {
+            IsSigning = false;
+        }
+    }
+
+    private async Task AuthenticateByGit()
+    {
+        _navigationManager.NavigateTo("/auth/login", true);
+    }
+}

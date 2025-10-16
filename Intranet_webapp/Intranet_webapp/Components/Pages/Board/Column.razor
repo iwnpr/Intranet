@@ -1,0 +1,109 @@
+﻿@using Domain_lib.Entities
+<div class="kanban-column
+    @(IsCollapsed ? "collapsed" : string.Empty) border p-2 m-2
+    @(IsDropTarget ? "drop-target" : string.Empty)
+    @(IsSourceColumn ? "highlight" : string.Empty)"
+     @ondragover:preventDefault
+     @ondrop="HandleDrop"
+     @ondragover="HandleDragOver">
+
+    <div class="column-header" style="@(IsCollapsed && ColumnKanban.ColumnName == "Опубликовано" ? CollapsedStyle : string.Empty)">
+        <h3 class="@(IsCollapsed && ColumnKanban.ColumnName == "Опубликовано" ? "vertical" : string.Empty)">
+            @ColumnKanban.ColumnName
+        </h3>
+        <span class="badge bg-secondary">@Cards.Count</span>
+        @if (ColumnKanban.ColumnName == "Опубликовано")
+        {
+            <button @onclick="() => IsCollapedClicked()"
+                    class="btn @(IsCollapsed ? "mb-2" : "ms-2")"
+                    style="font-weight: 900;font-size: clamp(1rem, 1vw, 1rem);">
+                @(IsCollapsed ? "›" : "‹")
+            </button>
+        }
+
+        @if (ColumnKanban.ColumnName == "Бэклог")
+        {
+            <button @onclick="ShowAddCardModal" class="btn btn-sm btn-outline-danger">+</button>
+        }
+    </div>
+
+    @if (ColumnKanban.ColumnName != "Опубликовано")
+    {
+        <div class="kanban-cards">
+            @foreach (var card in Cards.OrderBy(c => c.CardName))
+            {
+                <Card CardKanban="card"
+                      IsDragging="(DraggedCard == card)"
+                      IsMinimal=IsMinimal
+                      OnClick="@(() => ShowCardModal(card))"
+                      OnDragStart="@(() => HandleDragStart(card))" />
+            }
+        </div>
+    }
+    else
+    {
+        if (!IsCollapsed)
+        {
+            <div class="kanban-cards">
+                @foreach (var card in Cards.OrderBy(c => c.CardName))
+                {
+                    <Card CardKanban="card"
+                          IsDragging="(DraggedCard == card)"
+                          IsMinimal=IsMinimal
+                          OnClick="@(() => ShowCardModal(card))"
+                          OnDragStart="@(() => HandleDragStart(card))" />
+                }
+            </div>
+        }
+    }
+
+</div>
+
+@code {
+    [Parameter] public TdColumn ColumnKanban { get; set; } = default!;
+    [Parameter] public List<TdCard> Cards { get; set; } = [];
+    [Parameter] public TdUser CurrentUser { get; set; } = default!;
+    [Parameter] public TdCard? DraggedCard { get; set; }
+    [Parameter] public TdColumn? ColumnFrom { get; set; }
+    [Parameter] public TdColumn? ColumnTo { get; set; }
+    [Parameter] public bool IsCollapsed { get; set; }
+    [Parameter] public bool IsMinimal { get; set; }
+    [Parameter] public EventCallback<bool> IsCollapsedEvent { get; set; }
+    [Parameter] public EventCallback<TdCard> OnDragStartCard { get; set; }
+    [Parameter] public EventCallback<TdColumn> OnDropCard { get; set; }
+    [Parameter] public EventCallback<TdCard?> OnShowCardModal { get; set; }
+    [Parameter] public EventCallback<TdColumn> OnDragEnterColumn { get; set; }
+    [Parameter] public EventCallback<long?> cardIdEvent { get; set; }
+
+    private string CollapsedStyle = @"flex-direction: column-reverse;align-items: stretch;";
+    private bool IsDropTarget => ColumnTo is not null && ColumnKanban == ColumnTo;
+    private bool IsSourceColumn => ColumnKanban == ColumnFrom;
+
+    private async Task HandleDragStart(TdCard card)
+    {
+        await cardIdEvent.InvokeAsync(card.Keyid);
+        await OnDragStartCard.InvokeAsync(card);
+    }
+    private async Task IsCollapedClicked()
+    {
+        IsCollapsed = !IsCollapsed;
+        await IsCollapsedEvent.InvokeAsync(IsCollapsed);
+    }
+    private async Task HandleDragOver()
+    {
+        await OnDragEnterColumn.InvokeAsync(ColumnKanban);
+    }
+    private async Task HandleDrop()
+    {
+        await OnDropCard.InvokeAsync(ColumnKanban);
+        await cardIdEvent.InvokeAsync(null);
+    }
+    private async Task ShowAddCardModal()
+    {
+        await OnShowCardModal.InvokeAsync(null);
+    }
+    private async Task ShowCardModal(TdCard card)
+    {
+        await OnShowCardModal.InvokeAsync(card);
+    }
+}

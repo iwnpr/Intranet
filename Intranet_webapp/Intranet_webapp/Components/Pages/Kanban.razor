@@ -1,0 +1,214 @@
+﻿@page "/board"
+@using Application_lib
+@using Application_lib.Gitlab
+@using Common_lib.Models.ServiceModels
+@using Domain_lib.Entities
+@using Domain_lib.Models
+@using Infrastructure_lib
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using Microsoft.EntityFrameworkCore
+@using Intranet_webapp.Components.Layout
+@using Intranet_webapp.Components.Pages.Board
+
+@inject AppDBContext _context
+@inject IGitService _gitService
+@inject ProtectedSessionStorage _sessionStorage
+@inject IGitApiService _gitApiService
+@rendermode InteractiveServer
+
+@if (!string.IsNullOrWhiteSpace(ErrorMessage))
+{
+    <div class="alert alert-danger">@ErrorMessage</div>
+}
+
+<div class="content-container">
+    <div class="content-header">
+        <div class="header-part">
+            <div class="project-selector">
+                <label>Проект:</label>
+                <ProjectSelector Projects="Projects" @bind-SelectedProjectId="SelectedProjectId" />
+            </div>
+            <p style="padding-left:10px; margin:unset;">ID:@SelectedProject?.GitId</p>
+        </div>
+        <button class="btn toggle @(IsMinimal ? "toggle-enable" : "toggle-disable")" @onclick=@(() => IsMinimal = !IsMinimal) id="pin">Min</button>
+    </div>
+    <div class="kanban-board">
+
+        @foreach (var column in Columns)
+        {
+            <Column ColumnKanban="column"
+                    Cards="@Cards.Where(c => c.ColumnId == column.Keyid).ToList()"
+                    CurrentUser="CurrentUser"
+                    DraggedCard="draggedCard"
+                    ColumnFrom="columnFrom"
+                    ColumnTo="columnTo"
+                    OnDragStartCard="card => HandleDragStart(card, column)"
+                    OnDragEnterColumn="HandleDragEnter"
+                    OnDropCard="HandleDrop"
+                    OnShowCardModal="card => ShowCardModal(column, card)"
+                    IsCollapsed="IsCollapsed"
+                    IsMinimal="IsMinimal"
+                    cardIdEvent="(cardId) => DraggedID = cardId"
+                    IsCollapsedEvent="(isCollapsed) => IsCollapsed = isCollapsed" />
+        }
+
+        @if (showCardModal && CurrentUser is not null)
+        {
+            <CardModal CurrentUser="CurrentUser"
+                       ProjectId="SelectedProject!.GitId.GetValueOrDefault(0)"
+                       modalCard="modalCard"
+                       Priorities="Priorities"
+                       Users="Users"
+                       IsNew="IsNew"
+                       OnClose="HandleModalClose" />
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public Guid refreshKey { get; set; }
+    protected override async Task OnParametersSetAsync()
+    {
+        // Обновление данных каждый раз, когда refreshKey меняется
+        await LoadAllData();
+    }
+
+    private long? SelectedProjectId;
+    private TdProject? SelectedProject => Projects.FirstOrDefault(p => p.Keyid == SelectedProjectId);
+    private List<TdColumn> Columns => SelectedProject?.TdColumns.OrderBy(x => x.ColumnOrder).ToList() ?? [];
+    private TdUser? CurrentUser;
+    private List<TdProject> Projects = [];
+    private List<TrPriority> Priorities = [];
+    private List<TdCard> Cards = [];
+    private List<TdUser> Users = [];
+
+    private bool IsCollapsed;
+    private bool IsMinimal;
+    private long? DraggedID;
+    private bool IsDragged;
+    private string? ErrorMessage = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCurrentUser();
+        await LoadAllData();
+    }
+
+    private async Task LoadCurrentUser()
+    {
+        CurrentUser = (await _sessionStorage.GetAsync<TdUser>("login")).Value;
+    }
+    private async Task LoadAllData()
+    {
+        try
+        {
+            await LoadProjects();
+            await LoadPriorities();
+            await LoadUsers();
+            await LoadCards();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+    private async Task LoadProjects()
+    {
+        Projects = await _context.TdProjects
+                                 .Include(p => p.TdColumns)
+                                 .ToListAsync();
+
+        SelectedProjectId ??= Projects.FirstOrDefault()?.Keyid;
+    }
+    private async Task LoadPriorities()
+    {
+        Priorities = await _context.TrPriorities.ToListAsync();
+    }
+    private async Task LoadUsers()
+    {
+        Users = await _context.TdUsers.ToListAsync();
+    }
+    private async Task LoadCards()
+    {
+        Cards = await _context.TdCards
+                              .Include(c => c.TdComments).ThenInclude(c => c.User)
+                              .Include(c => c.Author)
+                              .Include(c => c.Assigned)
+                              .ToListAsync();
+    }
+
+    // Обработчики драгНдропов
+    private TdColumn? columnTo = null;
+    private TdCard? draggedCard = null;
+    private TdColumn? columnFrom = null;
+    private void HandleDragStart(TdCard card, TdColumn column)
+    {
+        if (card.Keyid != DraggedID)
+        {
+            IsDragged = true;
+            return;
+        }
+
+        columnFrom = column;
+        draggedCard = card;
+    }
+    private void HandleDragEnter(TdColumn column)
+    {
+        if (IsDragged)
+            return;
+
+        columnTo = column;
+    }
+    private async Task HandleDrop(TdColumn column)
+    {
+        ErrorMessage = string.Empty;
+
+        if (draggedCard is not null && columnTo is not null && draggedCard.ColumnId != columnTo.Keyid)
+        {
+            draggedCard.ColumnId = columnTo.Keyid;
+            var stateChangeResult = await _gitService.ChangeIssueColumn(IssueAgg.Create(draggedCard, SelectedProject!.GitId!.Value, CurrentUser, columnFrom, columnTo));
+
+            if (!stateChangeResult.IsSuccess)
+            {
+                ErrorMessage = stateChangeResult.InnerError.Message;
+                return;
+            }
+
+            await _context.SaveChangesAsync();
+        }
+
+        columnTo = null;
+        columnFrom = null;
+        draggedCard = null;
+        IsDragged = false;
+
+        StateHasChanged();
+    }
+    private List<TdCard> FilteredCards(TdColumn column)
+    {
+        return column.TdCards.ToList();
+    }
+
+    // Обработчики модального окна карточки
+    bool showCardModal;
+    bool IsNew;
+    private TdCard? modalCard = null;
+    private void ShowCardModal(TdColumn column, TdCard? card = null)
+    {
+        IsNew = card is null;
+        modalCard = card ?? new()
+        {
+            ColumnId = column.Keyid,
+            AuthorId = CurrentUser!.Keyid
+        };
+        showCardModal = true;
+    }
+    private async Task HandleModalClose()
+    {
+        showCardModal = false;
+        modalCard = null;
+        IsNew = false;
+        await LoadAllData();
+        StateHasChanged();
+    }
+}
