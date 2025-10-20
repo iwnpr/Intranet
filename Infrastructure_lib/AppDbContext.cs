@@ -30,6 +30,8 @@ public partial class AppDBContext : DbContext
 
     public virtual DbSet<TdUser> TdUsers { get; set; }
 
+    public virtual DbSet<TdRole> TdRoles { get; set; }
+
     public virtual DbSet<TrPriority> TrPriorities { get; set; }
 
     public virtual DbSet<TrStatus> TrStatuses { get; set; }
@@ -288,6 +290,9 @@ public partial class AppDBContext : DbContext
                 .HasDefaultValue(false)
                 .HasColumnName("is_system");
             entity.Property(e => e.Login).HasColumnName("login");
+            entity.Property(e => e.RoleId)
+                .HasDefaultValue(1L)
+                .HasColumnName("role_id");
             entity.Property(e => e.StatusId)
                 .HasDefaultValue(1)
                 .HasColumnName("status_id");
@@ -297,6 +302,23 @@ public partial class AppDBContext : DbContext
                 .HasForeignKey(d => d.StatusId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("td_users_tr_status_fk");
+
+
+            entity.HasOne(d => d.Role).WithMany(p => p.TdUsers)
+                .HasForeignKey(d => d.RoleId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("td_users_td_roles_fk");
+        });
+
+        modelBuilder.Entity<TdRole>(entity =>
+        {
+            entity.HasKey(e => e.Keyid).HasName("td_roles_pk");
+
+            entity.ToTable("td_roles", "bureautasker");
+
+            entity.Property(e => e.Keyid).HasColumnName("keyid");
+            entity.Property(e => e.SystemName).HasColumnName("system_name");
+            entity.Property(e => e.DisplayName).HasColumnName("display_name");
         });
 
         modelBuilder.Entity<TrPriority>(entity =>

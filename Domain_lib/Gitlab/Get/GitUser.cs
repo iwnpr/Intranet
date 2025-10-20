@@ -43,8 +43,10 @@ namespace Domain_lib.Gitlab.Get
         public int namespace_id { get; set; }
         public DateTime? email_reset_offered_at { get; set; }
 
-        public TdUser MapTdUser()
+        public TdUser MapTdUser(TdRole defaultRole)
         {
+            ArgumentNullException.ThrowIfNull(defaultRole);
+
             return new()
             {
                 Email = email,
@@ -52,6 +54,8 @@ namespace Domain_lib.Gitlab.Get
                 IsSystem = ((email?.Contains("gitlab-new") ?? false) || (email?.Contains("example.com") ?? false)),
                 Login = username,
                 StatusId = 1,
+                RoleId = defaultRole.Keyid,
+                Role = defaultRole,
                 UserName = name
             };
         }

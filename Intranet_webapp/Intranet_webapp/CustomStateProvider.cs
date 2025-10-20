@@ -26,7 +26,7 @@ class CustomStateProvider(ProtectedSessionStorage sessionStorage, IHttpContextAc
         {
             return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
         }
-
+        
         // Создаем идентификацию для пользователя
         var identity = new ClaimsIdentity(
         [

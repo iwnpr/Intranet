@@ -23,6 +23,10 @@ public partial class TdUser
 
     public virtual TrStatus Status { get; set; } = null!;
 
+    public long RoleId { get; set; }
+
+    public virtual TdRole Role { get; set; } = null!;
+
     public virtual ICollection<TdCard> TdCardAssigneds { get; set; } = new List<TdCard>();
 
     public virtual ICollection<TdCard> TdCardAuthors { get; set; } = new List<TdCard>();

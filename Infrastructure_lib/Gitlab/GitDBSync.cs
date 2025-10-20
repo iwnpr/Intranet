@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
 using Domain_lib;
 using Domain_lib.Models;
+using Domain_lib.Constants;
 
 namespace Infrastructure_lib.Gitlab
 {
@@ -28,6 +29,16 @@ namespace Infrastructure_lib.Gitlab
                 return Result.Success();
             }
 
+            var rolesBySystemName = await _context.TdRoles.ToDictionaryAsync(r => r.SystemName);
+
+            if (!rolesBySystemName.TryGetValue(RoleSystemNames.Member, out var memberRole))
+            {
+                _logger.LogError("Роль {Role} отсутствует в справочнике td_roles", RoleSystemNames.Member);
+                return Result.Error(-1, $"Роль '{RoleSystemNames.Member}' не настроена.");
+            }
+
+            rolesBySystemName.TryGetValue(RoleSystemNames.Admin, out var adminRole);
+
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
@@ -48,14 +59,25 @@ namespace Infrastructure_lib.Gitlab
                     if (existingUsers.TryGetValue(gitUser.username, out var existingUser))
                     {
                         // Обновляем существующего пользователя
-                        await UpdateExistingUser(existingUser, gitUser, userId);
+                        await UpdateExistingUser(existingUser, gitUser, userId, memberRole, adminRole);
                         _context.TdUsers.Update(existingUser);
                         _logger.LogInformation("Обновление пользователя {user}", existingUser.Keyid);
                     }
                     else
                     {
                         // Добавляем нового пользователя
-                        var newUser = gitUser.MapTdUser();
+                        var newUser = gitUser.MapTdUser(memberRole);
+
+                        if (gitUser.is_admin == true && adminRole is not null)
+                        {
+                            newUser.RoleId = adminRole.Keyid;
+                            newUser.Role = adminRole;
+                        }
+                        else if (gitUser.is_admin == true)
+                        {
+                            _logger.LogWarning("Админ GitLab {User} синхронизирован без соответствующей роли", gitUser.username);
+                        }
+
                         await _context.TdUsers.AddAsync(newUser);
                         _logger.LogInformation("Добавление нового пользователя {username}", gitUser.username);
                     }
@@ -79,7 +101,7 @@ namespace Infrastructure_lib.Gitlab
                 return Result.Error(-1, ex.Message);
             }
         }
-        private async Task UpdateExistingUser(TdUser existing, GitUser gitUser, long userId)
+        private async Task UpdateExistingUser(TdUser existing, GitUser gitUser, long userId, TdRole memberRole, TdRole? adminRole)
         {
             var hsnap = HistorySnap.Create();
 
@@ -95,6 +117,13 @@ namespace Infrastructure_lib.Gitlab
 
             if (hsnap.CheckForChangesAndAdd(nameof(existing.Login), existing.Login, gitUser.username))
                 existing.Login = gitUser.username;
+
+            var desiredRole = gitUser.is_admin == true && adminRole is not null ? adminRole : memberRole;
+            if (hsnap.CheckForChangesAndAdd(nameof(existing.RoleId), existing.RoleId.ToString(), desiredRole.Keyid.ToString()))
+            {
+                existing.RoleId = desiredRole.Keyid;
+                existing.Role = desiredRole;
+            }
 
             if (hsnap.HasChanges)
                 await _context.TdHistories.AddAsync(new()
