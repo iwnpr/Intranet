@@ -1,0 +1,237 @@
+﻿@page "/organization-request"
+
+@using System.ComponentModel.DataAnnotations
+@using System.Linq
+@using System.Net
+@using Application_lib
+@using Domain_lib.Models
+@using Infrastructure_lib
+@using Microsoft.EntityFrameworkCore
+@inject AppDBContext DbContext
+@inject IEmailService EmailService
+
+<h1>Подключение организации</h1>
+<p class="text-muted">Заполните форму, чтобы отправить заявку на подключение организации.</p>
+
+@if (!string.IsNullOrWhiteSpace(SubmitMessage))
+{
+    <div class="alert @(IsSuccess ? "alert-success" : "alert-danger")" role="alert">
+        @SubmitMessage
+    </div>
+}
+
+<EditForm Model="@RequestModel" OnValidSubmit="HandleValidSubmit">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="mb-3">
+        <label class="form-label" for="organizationName">Наименование организации</label>
+        <InputText id="organizationName" class="form-control" @bind-Value="RequestModel.OrganizationName" />
+        <ValidationMessage For="@(() => RequestModel.OrganizationName)" />
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="mb-3">
+                <label class="form-label" for="inn">ИНН</label>
+                <InputText id="inn" class="form-control" @bind-Value="RequestModel.Inn" />
+                <ValidationMessage For="@(() => RequestModel.Inn)" />
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="mb-3">
+                <label class="form-label" for="ogrn">ОГРН</label>
+                <InputText id="ogrn" class="form-control" @bind-Value="RequestModel.Ogrn" />
+                <ValidationMessage For="@(() => RequestModel.Ogrn)" />
+            </div>
+        </div>
+    </div>
+
+@*     <div class="mb-3">
+        <label class="form-label">IP-адреса для white-листов</label>
+        @for (var index = 0; index < RequestModel.WhiteListIps.Count; index++)
+        {
+            <div class="input-group mb-2">
+                <InputText class="form-control" @bind-Value="RequestModel.WhiteListIps[index]" placeholder="0.0.0.0" />
+                <button type="button" class="btn btn-outline-danger" @onclick="() => RemoveIp(index)" title="Удалить">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+        }
+        <button type="button" class="btn btn-outline-primary btn-sm" @onclick="AddIp">Добавить IP</button>
+        <ValidationMessage For="() => RequestModel.WhiteListIps" />
+    </div> *@
+
+@*     <div class="mb-3">
+        <label class="form-label">Сервисы</label>
+        <div class="d-flex flex-column gap-1">
+            @if (AvailableServices.Count == 0)
+            {
+                <span class="text-muted">Доступные сервисы не найдены.</span>
+            }
+            else
+            {
+                @foreach (var service in AvailableServices)
+                {
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="service_@service.Keyid" value="@service.Keyid"
+                               checked="@RequestModel.SelectedServiceIds.Contains(service.Keyid)"
+                               @onchange="args => ToggleService(service.Keyid, args)" />
+                        <label class="form-check-label" for="service_@service.Keyid">@service.ProjectName</label>
+                    </div>
+                }
+            }
+        </div>
+        <ValidationMessage For="() => RequestModel.SelectedServiceIds" />
+    </div> *@
+
+    <button type="submit" class="btn btn-primary" disabled="@IsSubmitting">
+        @(IsSubmitting ? "Отправка..." : "Отправить заявку")
+    </button>
+</EditForm>
+
+@code {
+    private OrganizationRequestModel RequestModel { get; set; } = new();
+    private List<TdProject> AvailableServices { get; set; } = new();
+    private bool IsSubmitting { get; set; }
+    private string? SubmitMessage { get; set; }
+    private bool IsSuccess { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        AvailableServices = await DbContext.TdProjects
+            .OrderBy(project => project.ProjectName)
+            .ToListAsync();
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        IsSubmitting = true;
+        SubmitMessage = null;
+        IsSuccess = false;
+
+        var normalizedIps = RequestModel.GetNormalizedWhiteListIps();
+        var selectedServices = AvailableServices
+            .Where(service => RequestModel.SelectedServiceIds.Contains(service.Keyid))
+            .Select(service => service.ProjectName)
+            .ToList();
+
+        var emailRequest = new OrganizationRequestMessage{
+            OrganizationName = RequestModel.OrganizationName.Trim(),
+            Inn = RequestModel.Inn.Trim(),
+            Ogrn =  RequestModel.Ogrn.Trim(),
+            WhiteListIps = normalizedIps,
+            Services = selectedServices
+
+        };
+
+        try
+        {
+            await EmailService.SendOrganizationRequestAsync(emailRequest);
+            IsSuccess = true;
+            SubmitMessage = "Заявка успешно отправлена.";
+            RequestModel = new OrganizationRequestModel();
+        }
+        catch (Exception ex)
+        {
+            SubmitMessage = $"Не удалось отправить заявку: {ex.Message}";
+        }
+        finally
+        {
+            IsSubmitting = false;
+        }
+    }
+
+    private void AddIp()
+    {
+        RequestModel.WhiteListIps.Add(string.Empty);
+    }
+
+    private void RemoveIp(int index)
+    {
+        if (index < 0 || index >= RequestModel.WhiteListIps.Count)
+        {
+            return;
+        }
+
+        RequestModel.WhiteListIps.RemoveAt(index);
+
+        if (RequestModel.WhiteListIps.Count == 0)
+        {
+            RequestModel.WhiteListIps.Add(string.Empty);
+        }
+    }
+
+    private void ToggleService(long serviceId, ChangeEventArgs args)
+    {
+        var isChecked = args.Value is bool value && value;
+
+        if (isChecked)
+        {
+            RequestModel.SelectedServiceIds.Add(serviceId);
+        }
+        else
+        {
+            RequestModel.SelectedServiceIds.Remove(serviceId);
+        }
+    }
+
+    private sealed class OrganizationRequestModel : IValidatableObject
+    {
+        public OrganizationRequestModel()
+        {
+            WhiteListIps = new List<string> { string.Empty };
+        }
+
+        [Required(ErrorMessage = "Укажите наименование организации.")]
+        [StringLength(256, ErrorMessage = "Наименование организации не должно превышать 256 символов.")]
+        public string OrganizationName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Укажите ИНН организации.")]
+        [RegularExpression(@"^\d{10}(\d{2})?$", ErrorMessage = "Некорректный формат ИНН.")]
+        public string Inn { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Укажите ОГРН организации.")]
+        [RegularExpression(@"^\d{13}$", ErrorMessage = "Некорректный формат ОГРН.")]
+        public string Ogrn { get; set; } = string.Empty;
+
+        public List<string> WhiteListIps { get; set; }
+
+        public HashSet<long> SelectedServiceIds { get; set; } = new();
+
+        public IReadOnlyList<string> GetNormalizedWhiteListIps()
+        {
+            return WhiteListIps
+                .Select(ip => ip?.Trim())
+                .Where(ip => !string.IsNullOrWhiteSpace(ip))
+                .Select(ip => ip!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            var normalizedIps = GetNormalizedWhiteListIps();
+
+            if (normalizedIps.Count == 0)
+            {
+                yield return new ValidationResult("Укажите как минимум один IP-адрес.", new[] { nameof(WhiteListIps) });
+            }
+            else
+            {
+                foreach (var ip in normalizedIps)
+                {
+                    if (!IPAddress.TryParse(ip, out _))
+                    {
+                        yield return new ValidationResult($"Некорректный IP-адрес: {ip}", new[] { nameof(WhiteListIps) });
+                    }
+                }
+            }
+
+            if (SelectedServiceIds.Count == 0)
+            {
+                yield return new ValidationResult("Выберите хотя бы один сервис.", new[] { nameof(SelectedServiceIds) });
+            }
+        }
+    }
+}

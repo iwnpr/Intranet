@@ -1,7 +1,8 @@
+using Domain_lib.Models;
 using Infrastructure_lib;
+using Intranet_webapp;
 using Intranet_webapp.Components;
 using Microsoft.AspNetCore.Components.Authorization;
-using Intranet_webapp;
 using Serilog;
 using System.Text;
 
@@ -25,6 +26,7 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<CustomStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(provider => provider.GetRequiredService<CustomStateProvider>());
 builder.Services.AddScoped<ThemeService>();
+builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
 
 /* Добавление сервисов в контейнер
  * с использованим extentions static классов

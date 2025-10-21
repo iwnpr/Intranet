@@ -92,7 +92,7 @@
                     LoginMessage = string.Empty;
                     var sessionUser = SessionUserMapper.ToSessionUser(loginUser.Data);
                     await _sessionStorage.SetAsync("login", sessionUser);
-                    _navigationManager.NavigateTo("/", true);
+                    _navigationManager.NavigateTo("/board", true);
                 }
             }
             else
