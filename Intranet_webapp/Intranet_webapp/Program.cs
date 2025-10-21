@@ -1,4 +1,5 @@
 using Infrastructure_lib;
+using Infrastructure_lib.Email;
 using Intranet_webapp.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Intranet_webapp;
@@ -19,21 +20,23 @@ builder.Services.AddRazorComponents()
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddControllers();
 
-/* јутентификаци€ с использованием провайдера состо€ни€ */
+/*      */
 builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<CustomStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(provider => provider.GetRequiredService<CustomStateProvider>());
 builder.Services.AddScoped<ThemeService>();
 
-/* ƒобавление сервисов в контейнер
- * с использованим extentions static классов
+/*    
+ *   extentions static 
  */
 builder.Services
     .AdaptersDIExtention(builder.Configuration)
     .ServicesDIExtention();
 
-/* ƒобавление http-клиентов дл€ сервисов */
+builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
+
+/*  http-   */
 builder.Services.AddHttpClient("GitClient", x =>
 {
     x.BaseAddress = new Uri($"{builder.Configuration.GetValue<string>("GitSettings:BaseUrl")}{builder.Configuration.GetValue<string>("GitSettings:Client:Api")}");
