@@ -1,5 +1,7 @@
-﻿using Application_lib.Authorization;
+using Application_lib.Authorization;
+using Application_lib.Email;
 using Application_lib.Gitlab;
+using Infrastructure_lib.Email;
 using Infrastructure_lib.Gitlab;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -12,6 +14,7 @@ namespace Infrastructure_lib
             services.AddScoped<IGitService, GitService>();
             services.AddScoped<IAuthService, AuthorizationService>();
             services.AddScoped<ITextFormatterService, TextFormatterService>();
+            services.AddScoped<IEmailService, SmtpEmailService>();
             return services;
         }
     }
