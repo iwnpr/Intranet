@@ -1,0 +1,47 @@
+﻿@page "/admin-test"
+@using Domain_lib.Constants
+@using Microsoft.AspNetCore.Authorization
+@using Application_lib
+@using Application_lib.Gitlab
+@using Common_lib.Models.ServiceModels
+@using Domain_lib.Entities
+@using Domain_lib.Models
+@using Infrastructure_lib
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using Microsoft.EntityFrameworkCore
+@using Intranet_webapp.Components.Layout
+@using Intranet_webapp.Components.Pages.Board
+
+@inject AppDBContext _context
+@inject IGitService _gitService
+@inject ProtectedSessionStorage _sessionStorage
+@inject IGitApiService _gitApiService
+@rendermode InteractiveServer
+
+
+<h3>Тестовая страница администратора</h3>
+
+<p>
+    Cтраница доступна только пользователям с ролью <strong>Admin</strong>.
+</p>
+
+<p>
+    Контент для администраторов системы.
+</p>
+
+@code {
+
+    private TdUser? CurrentUser;
+    private string? ErrorMessage = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCurrentUser();
+    }
+
+    private async Task LoadCurrentUser()
+    {
+        CurrentUser = (await _sessionStorage.GetAsync<TdUser>("login")).Value;
+    }
+
+}

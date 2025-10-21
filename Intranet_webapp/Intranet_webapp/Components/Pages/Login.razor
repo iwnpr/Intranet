@@ -1,6 +1,7 @@
 ﻿@using System.ComponentModel.DataAnnotations
 @using Application_lib.Authorization
 @using Intranet_webapp.Components.Layout
+@using Intranet_webapp
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @using Microsoft.AspNetCore.Authorization
@@ -82,9 +83,17 @@
 
             if (loginUser.IsSuccess)
             {
-                LoginMessage = string.Empty;
-                await _sessionStorage.SetAsync("login", loginUser.Data);
-                _navigationManager.NavigateTo("/board", true);
+                if (loginUser.Data.Role is null)
+                {
+                    LoginMessage = "Для пользователя не настроена роль.";
+                }
+                else
+                {
+                    LoginMessage = string.Empty;
+                    var sessionUser = SessionUserMapper.ToSessionUser(loginUser.Data);
+                    await _sessionStorage.SetAsync("login", sessionUser);
+                    _navigationManager.NavigateTo("/", true);
+                }
             }
             else
             {

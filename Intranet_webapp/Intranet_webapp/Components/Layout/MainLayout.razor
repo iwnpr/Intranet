@@ -1,4 +1,5 @@
 ﻿@using Application_lib.Gitlab
+@using Domain_lib.Constants
 @using Infrastructure_lib
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
@@ -26,6 +27,9 @@
                         </NavLink>
                         <NavLink class="link-dark" href="board">
                             <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Доска
+                        </NavLink>
+                        <NavLink class="link-dark" href="admin-test">
+                            <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Тестовая страница
                         </NavLink>
                     </div>
                     <div class="top-row" style="padding-right:unset !important;padding-left:unset !important;">
@@ -80,6 +84,12 @@
         {
             await ThemeService.LoadSavedThemeAsync();
             CurrentUser = (await _sessionStorage.GetAsync<TdUser>("login")).Value;
+
+            if (CurrentUser is not null && CurrentUser.Role is null)
+            {
+                CurrentUser = await _context.TdUsers.Include(u => u.Role).FirstAsync(x => x.Login == CurrentUser.Login);
+                await _sessionStorage.SetAsync("login", CurrentUser);
+            }
         }
     }
     private async Task ToggleTheme()
@@ -100,10 +110,21 @@
         {
             try
             {
-                if (CurrentUser.Keyid == 0)
+                if (CurrentUser.Keyid == 0 || CurrentUser.Role is null)
                 {
-                    CurrentUser = await _context.TdUsers.FirstAsync(x => x.Login == CurrentUser.Login);
+                    var dbUser = await _context.TdUsers.Include(u => u.Role).FirstAsync(x => x.Login == CurrentUser.Login);
+                    CurrentUser = SessionUserMapper.ToSessionUser(dbUser);
                     await _sessionStorage.SetAsync("login", CurrentUser);
+                }
+
+                if (!string.Equals(CurrentUser.Role.SystemName, RoleSystemNames.Admin, StringComparison.OrdinalIgnoreCase))
+                {
+                    ErrorMessage = "Недостаточно прав для синхронизации.";
+                    SyncIcon = "sync-warn";
+                    IsSincronizing = false;
+                    refreshKey = Guid.NewGuid();
+                    StateHasChanged();
+                    return;
                 }
 
                 var syncResult = await _gitService.SynchronizeGitlab(CurrentUser.Keyid);

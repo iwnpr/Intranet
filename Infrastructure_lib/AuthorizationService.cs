@@ -18,26 +18,39 @@ public class AuthorizationService(AppDBContext context, ILdapAuthService ADServi
         if (!ldapAuth.IsSuccess)
             return Result<TdUser>.Error(ldapAuth.InnerError.ErrorCode, ldapAuth.InnerError.Message);
 
-        var user = await _context.TdUsers.FirstOrDefaultAsync(x => x.Login == login);
+        var user = await _context.TdUsers
+            .Include(x => x.Role)
+            .FirstOrDefaultAsync(x => x.Login == login);
 
         if (user is null)
         {
-            var memberRole = await FindRoleAsync(RoleSystemNames.Member);
-
-            if (memberRole is null)
-                return Result<TdUser>.Error(-1, $"Роль '{RoleSystemNames.Member}' не настроена.");
+            var memberRole = await EnsureRoleExistsAsync(RoleSystemNames.Member, RoleSystemNames.Member);
 
             user = new TdUser()
             {
                 Login = login,
                 StatusId = 1,
                 RoleId = memberRole.Keyid,
+                Role = memberRole,
                 UserName = ldapAuth.Data.UserName,
                 Email = ldapAuth.Data.Email
             };
 
             await _context.TdUsers.AddAsync(user);
             //await _context.SaveChangesAsync();
+        }
+
+        if (user.Role is null)
+        {
+            var role = await _context.TdRoles
+                .FirstOrDefaultAsync(r => r.Keyid == user.RoleId);
+
+            if (role is null)
+            {
+                return Result<TdUser>.Error(-1, $"Роль с идентификатором '{user.RoleId}' не найдена для пользователя '{login}'.");
+            }
+
+            user.Role = role;
         }
 
         return Result<TdUser>.Success(user);
@@ -51,11 +64,7 @@ public class AuthorizationService(AppDBContext context, ILdapAuthService ADServi
 
             if (user is null)
             {
-                var memberRole = await FindRoleAsync(RoleSystemNames.Member);
-                if (memberRole is null)
-                {
-                    return Result<TdUser>.Error(-1, $"Роль '{RoleSystemNames.Member}' не настроена.");
-                }
+                var memberRole = await EnsureRoleExistsAsync(RoleSystemNames.Member, RoleSystemNames.Member);
 
                 user = new TdUser()
                 {
@@ -80,13 +89,28 @@ public class AuthorizationService(AppDBContext context, ILdapAuthService ADServi
     }
 
     /// <summary>
-    /// Извлекает роль, соответствующую указанному системному имени, если она существует.
+    /// Обеспечивает наличие роли с указанным системным именем, создавая её при отсутствии.
     /// </summary>
-    /// <param name="systemName">Уникальное системное имя роли</param>
-    /// <param name="cancellationToken">Токен, используемый для отмены поиска в базе данных.</param>
-    /// <returns>Сущность роли, если она будет найдена; в противном случае null</returns>
-    private Task<TdRole?> FindRoleAsync(string systemName, CancellationToken cancellationToken = default)
+    /// <param name="systemName">Уникальное системное имя роли.</param>
+    /// <param name="displayName">Отображаемое имя роли, используемое при создании новой записи.</param>
+    private async Task<TdRole> EnsureRoleExistsAsync(string systemName, string? displayName = null, CancellationToken cancellationToken = default)
     {
-        return _context.TdRoles.FirstOrDefaultAsync(r => r.SystemName == systemName, cancellationToken);
+        var role = await _context.TdRoles.FirstOrDefaultAsync(r => r.SystemName == systemName, cancellationToken);
+
+        if (role is not null)
+        {
+            return role;
+        }
+
+        role = new TdRole
+        {
+            SystemName = systemName,
+            DisplayName = displayName ?? systemName
+        };
+
+        await _context.TdRoles.AddAsync(role, cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return role;
     }
 }
